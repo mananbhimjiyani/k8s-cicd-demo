@@ -37,6 +37,12 @@ pipeline {
                     echo "📦 Pushing Docker image to Docker Hub..."
                     def imageTag = "${DOCKERHUB_USER}/${IMAGE_NAME}:${env.BRANCH_NAME}"
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        // fail with clear message if username is empty
+                        if (!env.DOCKER_USER?.trim()) {
+                            error("Docker Hub credential 'dockerhub-creds' has an empty username. Open Jenkins > Credentials > System (global) and set the username for id 'dockerhub-creds', or recreate it as 'Username with password'.")
+                        }
+                        // small non-sensitive debug (prints length, not the secret)
+                        echo "Docker Hub username length: ${env.DOCKER_USER.length()}"
                         sh '''echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 docker push ''' + imageTag + '''
 docker logout'''
