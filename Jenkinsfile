@@ -71,9 +71,16 @@ docker logout'''
                     # render k8s manifests (replace literal ${NAMESPACE} and ${DOCKER_IMAGE} placeholders)
                     sed -e 's|\\${NAMESPACE}|''' + env.NAMESPACE + '''|g' -e 's|\\${DOCKER_IMAGE}|''' + imageTag + '''|g' k8s/deployment.yaml > k8s/deployment-rendered.yaml
 
-                    # apply rendered manifests
+                    # extract Deployment name from the rendered manifest
+                    DEPLOYMENT_NAME=$(grep -A5 '^kind: Deployment' k8s/deployment-rendered.yaml | grep 'name:' | head -1 | awk '{print $2}')
+                    if [ -z "$DEPLOYMENT_NAME" ]; then
+                      echo "ERROR: could not determine Deployment name from k8s/deployment-rendered.yaml"; exit 1
+                    fi
+                    echo "Found deployment: $DEPLOYMENT_NAME"
+
+                    # apply rendered manifests and wait for rollout
                     kubectl --server=http://host.docker.internal:8001 apply -f k8s/deployment-rendered.yaml
-                    kubectl --server=http://host.docker.internal:8001 rollout status deployment/k8s-cicd-demo-deployment -n ''' + env.NAMESPACE + '''
+                    kubectl --server=http://host.docker.internal:8001 rollout status deployment/$DEPLOYMENT_NAME -n ''' + env.NAMESPACE + '''
                     '''
                 }
             }
