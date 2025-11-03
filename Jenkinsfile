@@ -11,10 +11,15 @@ pipeline {
         stage('Set Namespace') {
             steps {
                 script {
+                    // explicit branch -> namespace mapping
                     if (env.BRANCH_NAME == 'main') {
                         env.NAMESPACE = 'production'
-                    } else {
+                    } else if (env.BRANCH_NAME == 'dev') {
                         env.NAMESPACE = 'test'
+                    } else {
+                        // fallback: treat any other branch as test
+                        env.NAMESPACE = 'test'
+                        echo "Branch '${env.BRANCH_NAME}' not explicitly mapped — defaulting to namespace: ${env.NAMESPACE}"
                     }
                     echo "Deploying to namespace: ${env.NAMESPACE}"
                 }
@@ -55,9 +60,20 @@ docker logout'''
             steps {
                 script {
                     echo "🚀 Deploying to Kubernetes via proxy..."
+                    def imageTag = "${DOCKERHUB_USER}/${IMAGE_NAME}:${env.BRANCH_NAME}"
+                    // render manifest with actual namespace and image, create namespace if missing, then apply
                     sh """
-                    kubectl --server=http://host.docker.internal:8001 apply -f k8s/
-                    kubectl --server=http://host.docker.internal:8001 rollout status deployment/k8s-cicd-demo-deployment
+                    # ensure namespace exists
+                    if ! kubectl --server=http://host.docker.internal:8001 get ns ${env.NAMESPACE} >/dev/null 2>&1; then
+                      kubectl --server=http://host.docker.internal:8001 create ns ${env.NAMESPACE}
+                    fi
+
+                    # render k8s manifests (replace ${NAMESPACE} and ${DOCKER_IMAGE} placeholders)
+                    sed -e 's|\\\${NAMESPACE}|${env.NAMESPACE}|g' -e 's|\\\${DOCKER_IMAGE}|${imageTag}|g' k8s/deployment.yaml > k8s/deployment-rendered.yaml
+
+                    # apply rendered manifests
+                    kubectl --server=http://host.docker.internal:8001 apply -f k8s/deployment-rendered.yaml
+                    kubectl --server=http://host.docker.internal:8001 rollout status deployment/k8s-cicd-demo-deployment -n ${env.NAMESPACE}
                     """
                 }
             }
