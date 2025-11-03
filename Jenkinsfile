@@ -35,12 +35,11 @@ pipeline {
             steps {
                 script {
                     echo "📦 Pushing Docker image to Docker Hub..."
+                    def imageTag = "${DOCKERHUB_USER}/${IMAGE_NAME}:${env.BRANCH_NAME}"
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:${env.BRANCH_NAME}
-                        docker logout
-                        """
+                        sh '''echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+docker push ''' + imageTag + '''
+docker logout'''
                     }
                 }
             }
