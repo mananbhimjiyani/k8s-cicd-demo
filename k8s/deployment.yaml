@@ -2,8 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: student-dashboard
+  namespace: ${NAMESPACE}
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: student-dashboard
@@ -13,8 +14,20 @@ spec:
         app: student-dashboard
     spec:
       containers:
-      - name: student-dashboard
-        # This is a placeholder image; Jenkins will update it
-        image: your-dockerhub-username/student-dashboard:latest
-        ports:
-        - containerPort: 3000
+        - name: student-dashboard
+          image: ${DOCKER_IMAGE}
+          ports:
+            - containerPort: 5050
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: student-dashboard-service
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: student-dashboard
+  ports:
+    - port: 80
+      targetPort: 5050
+  type: NodePort

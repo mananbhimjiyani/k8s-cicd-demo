@@ -2,83 +2,86 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_USERNAME = "your-dockerhub-username"
-        APP_NAME = "student-dashboard"
-        DOCKER_CREDS = "dockerhub-creds" // Docker Hub username/password
-        KUBE_CREDS = "kubeconfig-creds"   // Your local ~/.kube/config file
+        BRANCH = "${env.BRANCH_NAME}"
+        DOCKERHUB_USER = 'mananbhimjiyani'
+        IMAGE_NAME = 'k8s-cicd-demo'
     }
 
     stages {
-        stage('Checkout') {
+        stage('Set Namespace') {
             steps {
-                checkout scm
+                script {
+                    // explicit branch -> namespace mapping
+                    if (env.BRANCH_NAME == 'main') {
+                        env.NAMESPACE = 'production'
+                    } else if (env.BRANCH_NAME == 'dev') {
+                        env.NAMESPACE = 'test'
+                    } else {
+                        // fallback: treat any other branch as test
+                        env.NAMESPACE = 'test'
+                        echo "Branch '${env.BRANCH_NAME}' not explicitly mapped — defaulting to namespace: ${env.NAMESPACE}"
+                    }
+                    echo "Deploying to namespace: ${env.NAMESPACE}"
+                }
             }
         }
 
-        stage('Build & Tag Image') {
+        stage('Build Docker Image') {
             steps {
                 script {
-                    env.IMAGE_TAG = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-                    env.DOCKER_IMAGE = "${DOCKER_USERNAME}/${APP_NAME}:${env.IMAGE_TAG}"
-                    
-                    echo "Building image: ${DOCKER_IMAGE}"
-                    docker.build(env.DOCKER_IMAGE, ".")
+                    echo "🔨 Building Docker image..."
+                    // build using the Dockerfile inside app/ and use app/ as context
+                    sh "docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${env.BRANCH_NAME} -f app/Dockerfile app"
                 }
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
-                docker.withRegistry('https://registry.hub.docker.com', DOCKER_CREDS) {
-                    docker.image(env.DOCKER_IMAGE).push()
-                    
-                    if (env.BRANCH_NAME == 'main') {
-                        docker.image(env.DOCKER_IMAGE).push('latest')
+                script {
+                    echo "📦 Pushing Docker image to Docker Hub..."
+                    def imageTag = "${DOCKERHUB_USER}/${IMAGE_NAME}:${env.BRANCH_NAME}"
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        // fail with clear message if username is empty
+                        if (!env.DOCKER_USER?.trim()) {
+                            error("Docker Hub credential 'dockerhub-creds' has an empty username. Open Jenkins > Credentials > System (global) and set the username for id 'dockerhub-creds', or recreate it as 'Username with password'.")
+                        }
+                        // small non-sensitive debug (prints length, not the secret)
+                        echo "Docker Hub username length: ${env.DOCKER_USER.length()}"
+                        sh '''echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+docker push ''' + imageTag + '''
+docker logout'''
                     }
                 }
             }
         }
 
-        stage('Deploy to Test (dev branch)') {
-            when {
-                branch 'dev'
-            }
+        stage('Deploy to Kubernetes') {
             steps {
-                echo "Deploying ${env.DOCKER_IMAGE} to TEST namespace"
-                // This step now uses your local kubeconfig
-                withKubeConfig(credentialsId: KUBE_CREDS) {
-                    sh "kubectl create namespace test --dry-run=client -o yaml | kubectl apply -f -"
-                    sh "kubectl apply -f k8s/service.yaml --namespace test"
-                    sh "kubectl apply -f k8s/deployment.yaml --namespace test"
-                    sh "kubectl set image deployment/student-dashboard student-dashboard=${DOCKER_IMAGE} --namespace test"
-                }
-            }
-        }
+                script {
+                    echo "🚀 Deploying to Kubernetes via proxy..."
+                    def imageTag = "${DOCKERHUB_USER}/${IMAGE_NAME}:${env.BRANCH_NAME}"
+                    // render manifest with actual namespace and image, create namespace if missing, then apply
+                    sh '''
+                    # ensure namespace exists
+                    if ! kubectl --server=http://host.docker.internal:8001 get ns ''' + env.NAMESPACE + ''' >/dev/null 2>&1; then
+                      kubectl --server=http://host.docker.internal:8001 create ns ''' + env.NAMESPACE + '''
+                    fi
 
-        stage('Deploy to Production (main branch)') {
-            when {
-                branch 'main'
-            }
-            steps {
-                input 'Proceed with PRODUCTION deployment?'
-                
-                echo "Deploying ${DOCKER_IMAGE} to PRODUCTION namespace"
-                // This step now uses your local kubeconfig
-                withKubeConfig(credentialsId: KUBE_CREDS) {
-                    sh "kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -"
-                    sh "kubectl apply -f k8s/service.yaml --namespace production"
-                    sh "kubectl apply -f k8s/deployment.yaml --namespace production"
-                    sh "kubectl set image deployment/student-dashboard student-dashboard=${DOCKER_IMAGE} --namespace production"
-                }
-            }
-        }
-    }
+                    # render k8s manifests (replace literal ${NAMESPACE} and ${DOCKER_IMAGE} placeholders)
+                    sed -e 's|\\${NAMESPACE}|''' + env.NAMESPACE + '''|g' -e 's|\\${DOCKER_IMAGE}|''' + imageTag + '''|g' k8s/deployment.yaml > k8s/deployment-rendered.yaml
 
-    post {
-        always {
-            script {
-                if (env.DOCKER_IMAGE) {
-                    sh "docker rmi ${DOCKER_IMAGE}"
+                    # extract Deployment name from the rendered manifest
+                    DEPLOYMENT_NAME=$(grep -A5 '^kind: Deployment' k8s/deployment-rendered.yaml | grep 'name:' | head -1 | awk '{print $2}')
+                    if [ -z "$DEPLOYMENT_NAME" ]; then
+                      echo "ERROR: could not determine Deployment name from k8s/deployment-rendered.yaml"; exit 1
+                    fi
+                    echo "Found deployment: $DEPLOYMENT_NAME"
+
+                    # apply rendered manifests and wait for rollout
+                    kubectl --server=http://host.docker.internal:8001 apply -f k8s/deployment-rendered.yaml
+                    kubectl --server=http://host.docker.internal:8001 rollout status deployment/$DEPLOYMENT_NAME -n ''' + env.NAMESPACE + '''
+                    '''
                 }
             }
         }
