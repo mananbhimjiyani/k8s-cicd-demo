@@ -54,12 +54,10 @@ docker logout'''
         stage('Deploy to Kubernetes') {
             steps {
                 script {
-                    echo "🚀 Deploying to ${env.NAMESPACE} namespace..."
+                    echo "🚀 Deploying to Kubernetes via proxy..."
                     sh """
-                    # apply the single k8s manifest in k8s/deployment.yaml
-                    kubectl apply -f k8s/deployment.yaml
-                    # wait for the actual deployment name from the manifest
-                    kubectl rollout status deployment/student-dashboard -n ${env.NAMESPACE}
+                    kubectl --server=http://host.docker.internal:8001 apply -f k8s/
+                    kubectl --server=http://host.docker.internal:8001 rollout status deployment/k8s-cicd-demo-deployment
                     """
                 }
             }

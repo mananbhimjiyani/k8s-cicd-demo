@@ -1,0 +1,18 @@
+FROM jenkins/jenkins:lts
+
+USER root
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    curl ca-certificates gnupg lsb-release apt-transport-https \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Docker CLI (auto-detects ARM or AMD64)
+RUN curl -fsSL https://get.docker.com | sh
+
+# Install kubectl
+RUN curl -LO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/$(dpkg --print-architecture)/kubectl" \
+    && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl \
+    && rm kubectl
+
+USER jenkins
