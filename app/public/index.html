@@ -1,45 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Dashboard</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎓 Student Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-    <header>
-        <h1>Welcome, Student!</h1>
-    </header>
+  <div class="container">
+    <h1>🎓 Student Dashboard</h1>
+    <button id="loadBtn">Load Students</button>
+    <ul id="studentList"></ul>
+  </div>
 
-    <main class="dashboard-grid">
-        <div class="card" id="profile">
-            <h2>My Profile</h2>
-            <p><strong>Name:</strong> Alex Johnson</p>
-            <p><strong>Student ID:</strong> S123456</p>
-            <p><strong>Major:</strong> Computer Science</p>
-        </div>
-
-        <div class="card" id="courses">
-            <h2>My Courses</h2>
-            <ul>
-                <li>CS-452: Cloud Computing</li>
-                <li>CS-421: DevOps & CICD</li>
-                <li>CS-310: Machine Learning</li>
-                <li>MATH-300: Linear Algebra</li>
-            </ul>
-        </div>
-
-        <div class="card" id="grades">
-            <h2>Recent Grades</h2>
-            <p>DevOps Midterm: <strong>A-</strong></p>
-            <p>Cloud Computing P1: <strong>B+</strong></p>
-        </div>
-
-        <div class="card" id="announcements">
-            <h2>Announcements</h2>
-            <p>Final project deadlines posted for CS-452.</p>
-        </div>
-    </main>
-
+  <script>
+    document.getElementById('loadBtn').addEventListener('click', async () => {
+      const res = await fetch('/api/students');
+      const students = await res.json();
+      const list = document.getElementById('studentList');
+      list.innerHTML = '';
+      students.forEach(s => {
+        const li = document.createElement('li');
+        li.textContent = `${s.id}. ${s.name} - Grade: ${s.grade}`;
+        list.appendChild(li);
+      });
+    });
+  </script>
 </body>
 </html>
