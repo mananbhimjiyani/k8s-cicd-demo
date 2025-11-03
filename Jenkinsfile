@@ -62,19 +62,19 @@ docker logout'''
                     echo "🚀 Deploying to Kubernetes via proxy..."
                     def imageTag = "${DOCKERHUB_USER}/${IMAGE_NAME}:${env.BRANCH_NAME}"
                     // render manifest with actual namespace and image, create namespace if missing, then apply
-                    sh """
+                    sh '''
                     # ensure namespace exists
-                    if ! kubectl --server=http://host.docker.internal:8001 get ns ${env.NAMESPACE} >/dev/null 2>&1; then
-                      kubectl --server=http://host.docker.internal:8001 create ns ${env.NAMESPACE}
+                    if ! kubectl --server=http://host.docker.internal:8001 get ns ''' + env.NAMESPACE + ''' >/dev/null 2>&1; then
+                      kubectl --server=http://host.docker.internal:8001 create ns ''' + env.NAMESPACE + '''
                     fi
 
-                    # render k8s manifests (replace ${NAMESPACE} and ${DOCKER_IMAGE} placeholders)
-                    sed -e 's|\\\${NAMESPACE}|${env.NAMESPACE}|g' -e 's|\\\${DOCKER_IMAGE}|${imageTag}|g' k8s/deployment.yaml > k8s/deployment-rendered.yaml
+                    # render k8s manifests (replace literal ${NAMESPACE} and ${DOCKER_IMAGE} placeholders)
+                    sed -e 's|\\${NAMESPACE}|''' + env.NAMESPACE + '''|g' -e 's|\\${DOCKER_IMAGE}|''' + imageTag + '''|g' k8s/deployment.yaml > k8s/deployment-rendered.yaml
 
                     # apply rendered manifests
                     kubectl --server=http://host.docker.internal:8001 apply -f k8s/deployment-rendered.yaml
-                    kubectl --server=http://host.docker.internal:8001 rollout status deployment/k8s-cicd-demo-deployment -n ${env.NAMESPACE}
-                    """
+                    kubectl --server=http://host.docker.internal:8001 rollout status deployment/k8s-cicd-demo-deployment -n ''' + env.NAMESPACE + '''
+                    '''
                 }
             }
         }
