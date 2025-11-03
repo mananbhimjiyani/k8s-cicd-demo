@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         BRANCH = "${env.BRANCH_NAME}"
-        DOCKERHUB_USER = 'mananbhimjiyani'  // ✅ replace with your Docker Hub username
+        DOCKERHUB_USER = 'mananbhimjiyani'
         IMAGE_NAME = 'k8s-cicd-demo'
     }
 
@@ -25,7 +25,8 @@ pipeline {
             steps {
                 script {
                     echo "🔨 Building Docker image..."
-                    sh "docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${env.BRANCH_NAME} ."
+                    // build using the Dockerfile inside app/ and use app/ as context
+                    sh "docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${env.BRANCH_NAME} -f app/Dockerfile app"
                 }
             }
         }
@@ -50,8 +51,10 @@ pipeline {
                 script {
                     echo "🚀 Deploying to ${env.NAMESPACE} namespace..."
                     sh """
-                    kubectl apply -f k8s/${env.NAMESPACE}/deployment.yaml
-                    kubectl rollout status deployment/${IMAGE_NAME} -n ${env.NAMESPACE}
+                    # apply the single k8s manifest in k8s/deployment.yaml
+                    kubectl apply -f k8s/deployment.yaml
+                    # wait for the actual deployment name from the manifest
+                    kubectl rollout status deployment/student-dashboard -n ${env.NAMESPACE}
                     """
                 }
             }
